@@ -6,6 +6,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
+#include <pthread.h>
 
 #define BUFSZ 1024
 
@@ -13,7 +14,34 @@ void usage(int argc, char **argv) {
     printf("Usage: %s <server IP> <server port>\n", argv[0]);
     printf("Example: %s 127.0.0.1 51511\n", argv[0]);
     exit(EXIT_FAILURE);
-};
+}
+
+void *send_thread(void *arg) {
+    int sock = *((int *)arg);
+    char buf[BUFSZ];
+
+    while (1) {
+        fgets(buf, BUFSZ, stdin);
+        ssize_t count = send(sock, buf, strlen(buf), 0);
+        if (count <= 0) break;
+    }
+
+    pthread_exit(NULL);
+}
+
+void *receive_thread(void *arg) {
+    int sock = *((int *)arg);
+    char buf[BUFSZ];
+
+    while (1) {
+        ssize_t count = recv(sock, buf, BUFSZ - 1, 0);
+        if (count <= 0) break;
+        buf[count] = '\0';
+        printf("%s\n", buf);
+    }
+
+    pthread_exit(NULL);
+}
 
 int main(int argc, char **argv) {
     if (argc < 3) usage(argc, argv);
@@ -27,24 +55,18 @@ int main(int argc, char **argv) {
     struct sockaddr *addr = (struct sockaddr *)(&storage);
     if (0 != connect(s, addr, sizeof(storage))) logexit("connect");
 
-    char buf[BUFSZ];
-    memset(buf, 0, BUFSZ);
+    pthread_t send_tid, receive_tid;
 
-    while (1) {
-        ssize_t count = recv(s, buf, BUFSZ - 1, 0);
-        if (count <= 0) break;
+    pthread_create(&send_tid, NULL, send_thread, &s);
+    pthread_create(&receive_tid, NULL, receive_thread, &s);
 
-        printf("%s\n", buf);
-
-        if (strncmp(buf, "exit", 4) == 0) break;
-
-        memset(buf, 0, BUFSZ);
-    };
+    pthread_join(send_tid, NULL);
+    pthread_join(receive_tid, NULL);
 
     close(s);
 
     exit(EXIT_SUCCESS);
-};
+}
 
 /*
 #include "common.h"
