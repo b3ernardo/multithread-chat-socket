@@ -14,7 +14,7 @@ void usage(int argc, char **argv) {
     printf("Usage: %s <server IP> <server port>\n", argv[0]);
     printf("Example: %s 127.0.0.1 51511\n", argv[0]);
     exit(EXIT_FAILURE);
-};
+}
 
 void *send_thread(void *arg) {
     int sock = *((int *)arg);
@@ -24,10 +24,10 @@ void *send_thread(void *arg) {
         fgets(buf, BUFSZ, stdin);
         ssize_t count = send(sock, buf, strlen(buf), 0);
         if (count <= 0) break;
-    };
+    }
 
     pthread_exit(NULL);
-};
+}
 
 void *receive_thread(void *arg) {
     int sock = *((int *)arg);
@@ -37,11 +37,18 @@ void *receive_thread(void *arg) {
         ssize_t count = recv(sock, buf, BUFSZ - 1, 0);
         if (count <= 0) break;
         buf[count] = '\0';
-        printf("%s\n", buf);
-    };
 
-    pthread_exit(NULL);
-};
+        if (strcmp(buf, "User limit exceeded") == 0) {
+            printf("User limit exceeded\n");
+            break;
+        }
+
+        printf("%s\n", buf);
+    }
+
+    close(sock);
+    exit(EXIT_SUCCESS);
+}
 
 int main(int argc, char **argv) {
     if (argc < 3) usage(argc, argv);
@@ -66,4 +73,4 @@ int main(int argc, char **argv) {
     close(s);
 
     exit(EXIT_SUCCESS);
-};
+}

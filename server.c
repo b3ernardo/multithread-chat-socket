@@ -10,7 +10,7 @@
 #include <pthread.h>
 
 #define BUFSZ 1024
-#define USER_LIMIT 15
+#define USER_LIMIT 4
 
 void usage(int argc, char **argv) {
     printf("Usage: %s <v4|v6> <server port>\n", argv[0]);
@@ -26,22 +26,23 @@ struct client_data {
 
 struct client_data *group[USER_LIMIT];
 int id_list[USER_LIMIT];
+int connected_users = 0;
 
 int id_generator() {
     for (int i = 1; i < USER_LIMIT; i++) {
         if (id_list[i] == 0) {
             id_list[i] = 1;
             return i;
-        };
-    };
+        }
+    }
     return 0;
-};
+}
 
 void send_to_group(const char *msg) {
     for (int i = 1; i < USER_LIMIT; i++) {
         if (id_list[i] == 1) send(group[i]->csock, msg, strlen(msg), 0);
-    };
-};
+    }
+}
 
 void *client_thread(void *data) {
     struct client_data *cdata = (struct client_data *)data;
@@ -49,12 +50,24 @@ void *client_thread(void *data) {
 
     char caddrstr[BUFSZ];
     addrtostr(caddr, caddrstr, BUFSZ);
-    if (cdata->id >= 10) {
-        printf("User %i added\n", cdata->id);
-    } else {
-        printf("User 0%i added\n", cdata->id);
+    if (connected_users < USER_LIMIT - 1) {
+        if (cdata->id >= 10) {
+            printf("User %i added\n", cdata->id);
+        } else {
+            printf("User 0%i added\n", cdata->id);
+        }
     }
     group[cdata->id] = cdata;
+
+    if (connected_users >= USER_LIMIT - 1) {
+        send(cdata->csock, "User limit exceeded", sizeof("User limit exceeded"), 0);
+        free(cdata);
+        close(cdata->csock);
+        id_list[cdata->id] = 0;
+        pthread_exit(EXIT_SUCCESS);
+    }
+
+    connected_users++;
 
     char join_msg[BUFSZ];
     memset(join_msg, 0, BUFSZ);
@@ -75,17 +88,18 @@ void *client_thread(void *data) {
                 printf("User %i disconnected\n", cdata->id);
             } else {
                 printf("Error receiving data from user %i\n", cdata->id);
-            };
+            }
             break;
-        };
+        }
         buf[count] = '\0';
         printf("[msg] %s, %d bytes: %s\n", caddrstr, (int)count, buf);
-    };
+    }
 
+    connected_users--;
     id_list[cdata->id] = 0;
 
     pthread_exit(EXIT_SUCCESS);
-};
+}
 
 int main(int argc, char **argv) {
     if (argc < 3) usage(argc, argv);
@@ -105,7 +119,7 @@ int main(int argc, char **argv) {
     if (0 != listen(s, 10)) logexit("listen");
 
     for (int i = 0; i < USER_LIMIT; i++) group[i] = NULL;
-    
+
     char addrstr[BUFSZ];
     addrtostr(addr, addrstr, BUFSZ);
     printf("Bound to %s, waiting connections\n", addrstr);
@@ -117,7 +131,7 @@ int main(int argc, char **argv) {
 
         int csock = accept(s, caddr, &caddrlen);
         if (csock == -1) logexit("accept");
-        
+
         struct client_data *cdata = malloc(sizeof(*cdata));
         if (!cdata) logexit("malloc");
 
@@ -127,7 +141,7 @@ int main(int argc, char **argv) {
 
         pthread_t tid;
         pthread_create(&tid, NULL, client_thread, cdata);
-    };
+    }
 
     exit(EXIT_SUCCESS);
-};
+}
