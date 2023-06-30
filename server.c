@@ -44,6 +44,21 @@ void send_to_group(const char *msg) {
     }
 }
 
+void list_users(int client_socket, int client_id) {
+    char user_list[BUFSZ];
+    memset(user_list, 0, BUFSZ);
+
+    for (int i = 1; i < USER_LIMIT; i++) {
+        if (id_list[i] == 1 && i != client_id) {
+            char user_id[4];
+            sprintf(user_id, "0%i ", i);
+            strcat(user_list, user_id);
+        }
+    }
+
+    send(client_socket, user_list, strlen(user_list), 0);
+}
+
 void *client_thread(void *data) {
     struct client_data *cdata = (struct client_data *)data;
     struct sockaddr *caddr = (struct sockaddr *)(&cdata->storage);
@@ -93,6 +108,10 @@ void *client_thread(void *data) {
         }
         buf[count] = '\0';
         printf("[msg] %s, %d bytes: %s\n", caddrstr, (int)count, buf);
+
+        if (strcmp(buf, "list users\n") == 0) {
+            list_users(cdata->csock, cdata->id);
+        }
     }
 
     connected_users--;

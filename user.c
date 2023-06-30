@@ -26,6 +26,8 @@ void *send_thread(void *arg) {
         if (count <= 0) break;
     }
 
+    close(sock);
+
     pthread_exit(NULL);
 }
 
@@ -37,17 +39,17 @@ void *receive_thread(void *arg) {
         ssize_t count = recv(sock, buf, BUFSZ - 1, 0);
         if (count <= 0) break;
         buf[count] = '\0';
+        printf("%s\n", buf);
 
         if (strcmp(buf, "User limit exceeded") == 0) {
-            printf("User limit exceeded\n");
-            break;
+            close(sock);
+            exit(EXIT_SUCCESS);
         }
-
-        printf("%s\n", buf);
     }
 
     close(sock);
-    exit(EXIT_SUCCESS);
+
+    pthread_exit(NULL);
 }
 
 int main(int argc, char **argv) {
@@ -56,21 +58,18 @@ int main(int argc, char **argv) {
     struct sockaddr_storage storage;
     if (0 != addrparse(argv[1], argv[2], &storage)) usage(argc, argv);
 
-    int s = socket(storage.ss_family, SOCK_STREAM, 0);
-    if (s == -1) logexit("socket");
+    int sock = socket(storage.ss_family, SOCK_STREAM, 0);
+    if (sock == -1) logexit("socket");
 
     struct sockaddr *addr = (struct sockaddr *)(&storage);
-    if (0 != connect(s, addr, sizeof(storage))) logexit("connect");
+    if (0 != connect(sock, addr, sizeof(storage))) logexit("connect");
 
     pthread_t send_tid, receive_tid;
-
-    pthread_create(&send_tid, NULL, send_thread, &s);
-    pthread_create(&receive_tid, NULL, receive_thread, &s);
+    pthread_create(&send_tid, NULL, send_thread, &sock);
+    pthread_create(&receive_tid, NULL, receive_thread, &sock);
 
     pthread_join(send_tid, NULL);
     pthread_join(receive_tid, NULL);
-
-    close(s);
 
     exit(EXIT_SUCCESS);
 }
