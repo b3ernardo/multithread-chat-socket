@@ -43,8 +43,8 @@ void send_to_group(const char *msg) {
     };
 };
 
-void * client_thread(void *data) {
-    struct client_data *cdata = (struct client_data *)data; 
+void *client_thread(void *data) {
+    struct client_data *cdata = (struct client_data *)data;
     struct sockaddr *caddr = (struct sockaddr *)(&cdata->storage);
 
     char caddrstr[BUFSZ];
@@ -53,7 +53,7 @@ void * client_thread(void *data) {
         printf("User %i added\n", cdata->id);
     } else {
         printf("User 0%i added\n", cdata->id);
-    };
+    }
     group[cdata->id] = cdata;
 
     char join_msg[BUFSZ];
@@ -62,17 +62,27 @@ void * client_thread(void *data) {
         sprintf(join_msg, "User %i joined the group!", cdata->id);
     } else {
         sprintf(join_msg, "User 0%i joined the group!", cdata->id);
-    };
+    }
     send_to_group(join_msg);
 
     char buf[BUFSZ];
     memset(buf, 0, BUFSZ);
-    size_t count = recv(cdata->csock, buf, BUFSZ - 1, 0);
-    printf("[msg] %s, %d bytes: %s\n", caddrstr, (int)count, buf);
+
+    while (1) {
+        ssize_t count = recv(cdata->csock, buf, BUFSZ - 1, 0);
+        if (count <= 0) {
+            if (count == 0) {
+                printf("User %i disconnected\n", cdata->id);
+            } else {
+                printf("Error receiving data from user %i\n", cdata->id);
+            };
+            break;
+        };
+        buf[count] = '\0';
+        printf("[msg] %s, %d bytes: %s\n", caddrstr, (int)count, buf);
+    };
 
     id_list[cdata->id] = 0;
-
-    close(cdata->csock);
 
     pthread_exit(EXIT_SUCCESS);
 };
