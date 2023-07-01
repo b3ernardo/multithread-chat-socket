@@ -56,7 +56,9 @@ void list_users(int client_socket, int client_id) {
         }
     }
 
-    send(client_socket, user_list, strlen(user_list), 0);
+    char response[BUFSZ];
+    snprintf(response, BUFSZ + 10, "RES_LIST(%s)", user_list);
+    send(client_socket, response, strlen(response), 0);
 }
 
 void *client_thread(void *data) {
@@ -75,7 +77,7 @@ void *client_thread(void *data) {
     group[cdata->id] = cdata;
 
     if (connected_users >= USER_LIMIT - 1) {
-        send(cdata->csock, "User limit exceeded", sizeof("User limit exceeded"), 0);
+        send(cdata->csock, "ERROR(01)", sizeof("ERROR(01)"), 0);
         free(cdata);
         close(cdata->csock);
         id_list[cdata->id] = 0;

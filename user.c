@@ -31,6 +31,23 @@ void *send_thread(void *arg) {
     pthread_exit(NULL);
 }
 
+void parse_user_list(const char *response, char *user_list) {
+    int length = strlen(response);
+    if (response[length - 1] == '\n')
+        length--;
+
+    int count = 0;
+    for (int i = 0; i < length; i++) {
+        if (response[i] >= '0' && response[i] <= '9') {
+            user_list[count++] = response[i];
+            user_list[count++] = response[i + 1];
+            user_list[count++] = ' ';
+            i++;
+        }
+    }
+    user_list[count - 1] = '\0';
+}
+
 void *receive_thread(void *arg) {
     int sock = *((int *)arg);
     char buf[BUFSZ];
@@ -39,11 +56,18 @@ void *receive_thread(void *arg) {
         ssize_t count = recv(sock, buf, BUFSZ - 1, 0);
         if (count <= 0) break;
         buf[count] = '\0';
-        printf("%s\n", buf);
 
-        if (strcmp(buf, "User limit exceeded") == 0) {
+        if (strncmp(buf, "ERROR(01)", sizeof("ERROR(01)") - 1) == 0) {
+            printf("User limit exceeded\n");
             close(sock);
             exit(EXIT_SUCCESS);
+        } else if (strncmp(buf, "RES_LIST(", sizeof("RES_LIST(") - 1) == 0) {
+            char user_list[BUFSZ];
+            memset(user_list, 0, BUFSZ);
+            parse_user_list(buf + sizeof("RES_LIST(") - 1, user_list);
+            printf("%s\n", user_list);
+        } else {
+            printf("%s\n", buf);
         }
     }
 
@@ -67,6 +91,13 @@ int main(int argc, char **argv) {
     pthread_t send_tid, receive_tid;
     pthread_create(&send_tid, NULL, send_thread, &sock);
     pthread_create(&receive_tid, NULL, receive_thread, &sock);
+
+    char inclusion_request[] = "REQ_ADD\n";
+    ssize_t count = send(sock, inclusion_request, strlen(inclusion_request), 0);
+    if (count <= 0) {
+        close(sock);
+        exit(EXIT_FAILURE);
+    }
 
     pthread_join(send_tid, NULL);
     pthread_join(receive_tid, NULL);
