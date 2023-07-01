@@ -1,4 +1,5 @@
 #include "common.h"
+
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -24,8 +25,16 @@ void *send_thread(void *arg) {
         fgets(buf, BUFSZ, stdin);
         ssize_t count = send(sock, buf, strlen(buf), 0);
         if (count <= 0) break;
-    }
 
+        if (strcmp(buf, "close connection\n") == 0) {
+            printf("Removed Successfully\n");
+            char remove_req[BUFSZ];
+            send(sock, remove_req, strlen(remove_req), 0);
+            close(sock);
+            exit(EXIT_SUCCESS);
+        }
+    }
+    
     close(sock);
 
     pthread_exit(NULL);
@@ -61,11 +70,26 @@ void *receive_thread(void *arg) {
             printf("User limit exceeded\n");
             close(sock);
             exit(EXIT_SUCCESS);
+        } else if (strncmp(buf, "ERROR(02)", sizeof("ERROR(02)") - 1) == 0) {
+            printf("User not found\n");
+            close(sock);
+            exit(EXIT_SUCCESS);
+        } else if (strncmp(buf, "MSG(", sizeof("MSG(") - 1) == 0) {
+            char *msg_start = strchr(buf + sizeof("MSG(") - 1, ',') + 8;
+            char *msg_end = strrchr(msg_start, ')') - 1;
+            size_t msg_len = msg_end - msg_start + 1;
+            char join_msg[BUFSZ];
+            strncpy(join_msg, msg_start, msg_len);
+            join_msg[msg_len] = '\0';
+            printf("%s\n", join_msg);
         } else if (strncmp(buf, "RES_LIST(", sizeof("RES_LIST(") - 1) == 0) {
             char user_list[BUFSZ];
             memset(user_list, 0, BUFSZ);
             parse_user_list(buf + sizeof("RES_LIST(") - 1, user_list);
             printf("%s\n", user_list);
+        } else if (strncmp(buf, "REQ_REM(", sizeof("REQ_REM(") - 1) == 0) {
+            int requested_id;
+            sscanf(buf, "REQ_REM(%d)", &requested_id);
         } else {
             printf("%s\n", buf);
         }

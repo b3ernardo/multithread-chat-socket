@@ -38,9 +38,17 @@ int id_generator() {
     return 0;
 }
 
-void send_to_group(const char *msg) {
+void send_to_group(const char *msg, int sender_id) {
     for (int i = 1; i < USER_LIMIT; i++) {
-        if (id_list[i] == 1) send(group[i]->csock, msg, strlen(msg), 0);
+        if (id_list[i] == 1 && i != sender_id) {
+            char response[BUFSZ];
+            snprintf(response, BUFSZ, "MSG(%02d, NULL, %s)", sender_id, msg);
+            send(group[i]->csock, response, strlen(response), 0);
+        } else if (id_list[i] == 1 && i == sender_id) {
+            char response[BUFSZ];
+            snprintf(response, BUFSZ, "MSG(%02d, NULL, %s)", sender_id, msg);
+            send(group[i]->csock, response, strlen(response), 0);
+        }
     }
 }
 
@@ -93,7 +101,7 @@ void *client_thread(void *data) {
     } else {
         sprintf(join_msg, "User 0%i joined the group!", cdata->id);
     }
-    send_to_group(join_msg);
+    send_to_group(join_msg, cdata->id);
 
     char buf[BUFSZ];
     memset(buf, 0, BUFSZ);
@@ -102,17 +110,49 @@ void *client_thread(void *data) {
         ssize_t count = recv(cdata->csock, buf, BUFSZ - 1, 0);
         if (count <= 0) {
             if (count == 0) {
-                printf("User %i disconnected\n", cdata->id);
+                char remove_msg[BUFSZ];
+                snprintf(remove_msg, BUFSZ, "User %02d left the group!", cdata->id);
+                send_to_group(remove_msg, cdata->id);
+                if (cdata->id >= 10) {
+                    printf("User %i removed\n", cdata->id);
+                } else {
+                    printf("User 0%i removed\n", cdata->id);
+                }
             } else {
                 printf("Error receiving data from user %i\n", cdata->id);
             }
-            break;
+            connected_users--;
+            id_list[cdata->id] = 0;
+            close(cdata->csock);
+            free(cdata);
+            pthread_exit(EXIT_SUCCESS);
         }
+        
         buf[count] = '\0';
         printf("[msg] %s, %d bytes: %s\n", caddrstr, (int)count, buf);
 
         if (strcmp(buf, "list users\n") == 0) {
             list_users(cdata->csock, cdata->id);
+        } else if (strncmp(buf, "REQ_REM(", sizeof("REQ_REM(") - 1) == 0) {
+            int requested_id;
+            sscanf(buf, "REQ_REM(%d)", &requested_id);
+
+            if (id_list[requested_id] == 1 && group[requested_id] != NULL) {
+                for (int i = 1; i < USER_LIMIT; i++) {
+                    if (id_list[i] == 1 && i != requested_id) {
+                        char remove_req[BUFSZ];
+                        snprintf(remove_req, BUFSZ, "REQ_REM(%02d)", requested_id);
+                        send(group[i]->csock, remove_req, strlen(remove_req), 0);
+                    }
+                }
+
+                close(cdata->csock);
+                free(cdata);
+                id_list[requested_id] = 0;
+                pthread_exit(EXIT_SUCCESS);
+            } else {
+                send(cdata->csock, "ERROR(02)", sizeof("ERROR(02)"), 0);
+            }
         }
     }
 
