@@ -146,6 +146,8 @@ void *client_thread(void *data) {
                     }
                 }
 
+                send(cdata->csock, "OK(01)", strlen("OK(01)"), 0);
+
                 close(cdata->csock);
                 free(cdata);
                 id_list[requested_id] = 0;

@@ -90,6 +90,10 @@ void *receive_thread(void *arg) {
         } else if (strncmp(buf, "REQ_REM(", sizeof("REQ_REM(") - 1) == 0) {
             int requested_id;
             sscanf(buf, "REQ_REM(%d)", &requested_id);
+        } else if (strncmp(buf, "OK(01)", sizeof("OK(01)") - 1) == 0) {
+            printf("Removed Successfully\n");
+            close(sock);
+            exit(EXIT_SUCCESS);
         } else {
             printf("%s\n", buf);
         }
