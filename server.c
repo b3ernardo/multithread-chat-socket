@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <pthread.h>
+#include <time.h>
 
 #define BUFSZ 1024
 #define USER_LIMIT 4
@@ -129,7 +130,6 @@ void *client_thread(void *data) {
         }
         
         buf[count] = '\0';
-        printf("[msg] %s, %d bytes: %s\n", caddrstr, (int)count, buf);
 
         if (strcmp(buf, "list users\n") == 0) {
             list_users(cdata->csock, cdata->id);
@@ -154,6 +154,32 @@ void *client_thread(void *data) {
                 pthread_exit(EXIT_SUCCESS);
             } else {
                 send(cdata->csock, "ERROR(02)", sizeof("ERROR(02)"), 0);
+            }
+        } else if (strncmp(buf, "MSG(NULL, \"", sizeof("MSG(NULL, \"") - 1) == 0) {
+            char *msg_start = strchr(buf, '\"') + 1;
+            char *msg_end = strrchr(buf, '\"');
+            size_t msg_len = msg_end - msg_start;
+            char recv_msg[BUFSZ];
+            strncpy(recv_msg, msg_start, msg_len);
+            recv_msg[msg_len] = '\0';
+
+            char time_str[8];
+            time_t now = time(NULL);
+            struct tm *timeinfo = localtime(&now);
+            strftime(time_str, sizeof(time_str), "[%H:%M]", timeinfo);
+
+            printf("%s %02d: %s\n", time_str, cdata->id, recv_msg);
+
+            for (int i = 1; i < USER_LIMIT; i++) {
+                if (id_list[i] == 1 && i != cdata->id) {
+                    char response[BUFSZ];
+                    snprintf(response, BUFSZ + 20, "MSG(%02d, NULL, \"%s\")", cdata->id, recv_msg);
+                    send(group[i]->csock, response, strlen(response), 0);
+                } else if (id_list[i] == 1 && i == cdata->id) {
+                    char response[BUFSZ];
+                    snprintf(response, BUFSZ + 20, "MSG(%02d, NULL, \"%s\")", cdata->id, recv_msg);
+                    send(group[i]->csock, response, strlen(response), 0);
+                }
             }
         }
     }

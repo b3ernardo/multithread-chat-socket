@@ -9,7 +9,8 @@
         "pthread.h": "c",
         "inet.h": "c",
         "common.h": "c",
-        "stat.h": "c"
+        "stat.h": "c",
+        "time.h": "c"
     },
     "git.ignoreLimitWarning": true
 }

@@ -11,10 +11,19 @@
 
 #define BUFSZ 1024
 
+int terminal_id = 0;
+
 void usage(int argc, char **argv) {
     printf("Usage: %s <server IP> <server port>\n", argv[0]);
     printf("Example: %s 127.0.0.1 51511\n", argv[0]);
     exit(EXIT_FAILURE);
+}
+
+void send_public_msg(int sock, const char *msg) {
+    char send_msg[BUFSZ];
+    // Aqui deveria estar no formato MSG(IdUSeri, NULL, Message)
+    snprintf(send_msg, BUFSZ, "MSG(NULL, \"%s\")", msg);
+    send(sock, send_msg, strlen(send_msg), 0);
 }
 
 void *send_thread(void *arg) {
@@ -32,6 +41,17 @@ void *send_thread(void *arg) {
             send(sock, remove_req, strlen(remove_req), 0);
             close(sock);
             exit(EXIT_SUCCESS);
+        }
+
+        if (strncmp(buf, "send all \"", sizeof("send all \"") - 1) == 0) {
+            terminal_id = 1;
+            char *msg_start = strchr(buf, '\"') + 1;
+            char *msg_end = strrchr(buf, '\"');
+            size_t msg_len = msg_end - msg_start;
+            char send_msg[BUFSZ];
+            strncpy(send_msg, msg_start, msg_len);
+            send_msg[msg_len] = '\0';
+            send_public_msg(sock, send_msg);
         }
     }
     
@@ -81,13 +101,37 @@ void *receive_thread(void *arg) {
             char join_msg[BUFSZ];
             strncpy(join_msg, msg_start, msg_len);
             join_msg[msg_len] = '\0';
-            printf("%s\n", join_msg);
+
+            if (join_msg[0] == '\"' && join_msg[msg_len - 1] == '\"') {
+                memmove(join_msg, join_msg + 1, msg_len - 2);
+                join_msg[msg_len - 2] = '\0';
+
+                char id_str[4];
+                size_t id_len = strchr(buf, ',') - (buf + sizeof("MSG(") - 1);
+                strncpy(id_str, buf + sizeof("MSG(") - 1, id_len);
+                id_str[id_len] = '\0';
+                int id = atoi(id_str);
+
+                char time_str[8];
+                time_t now = time(NULL);
+                struct tm *timeinfo = localtime(&now);
+                strftime(time_str, sizeof(time_str), "[%H:%M]", timeinfo);
+
+                if (terminal_id == 1) {
+                    printf("%s -> all: %s\n", time_str, join_msg);
+                } else {
+                    printf("%s %02d: %s\n", time_str, id, join_msg);
+                }
+            } else {
+                printf("%s\n", join_msg);
+            }
         } else if (strncmp(buf, "RES_LIST(", sizeof("RES_LIST(") - 1) == 0) {
             char user_list[BUFSZ];
             memset(user_list, 0, BUFSZ);
             parse_user_list(buf + sizeof("RES_LIST(") - 1, user_list);
             printf("%s\n", user_list);
         } else if (strncmp(buf, "REQ_REM(", sizeof("REQ_REM(") - 1) == 0) {
+            // O ID não está sendo enviado em REQ_REM(IdUseri)
             int requested_id;
             sscanf(buf, "REQ_REM(%d)", &requested_id);
         } else if (strncmp(buf, "OK(01)", sizeof("OK(01)") - 1) == 0) {
@@ -97,6 +141,7 @@ void *receive_thread(void *arg) {
         } else {
             printf("%s\n", buf);
         }
+        terminal_id = 0;
     }
 
     close(sock);
