@@ -11,7 +11,7 @@
 
 #define BUFSZ 1024
 
-int terminal_id = 0;
+int server_id = -1;
 
 void usage(int argc, char **argv) {
     printf("Usage: %s <server IP> <server port>\n", argv[0]);
@@ -21,8 +21,11 @@ void usage(int argc, char **argv) {
 
 void send_public_msg(int sock, const char *msg) {
     char send_msg[BUFSZ];
-    // Aqui deveria estar no formato MSG(IdUSeri, NULL, Message)
-    snprintf(send_msg, BUFSZ, "MSG(NULL, \"%s\")", msg);
+    if (server_id >= 10) {
+        snprintf(send_msg, BUFSZ, "MSG(%d, \"%s\")", server_id, msg);
+    } else {
+        snprintf(send_msg, BUFSZ, "MSG(0%d, \"%s\")", server_id, msg);
+    }
     send(sock, send_msg, strlen(send_msg), 0);
 }
 
@@ -44,7 +47,6 @@ void *send_thread(void *arg) {
         }
 
         if (strncmp(buf, "send all \"", sizeof("send all \"") - 1) == 0) {
-            terminal_id = 1;
             char *msg_start = strchr(buf, '\"') + 1;
             char *msg_end = strrchr(buf, '\"');
             size_t msg_len = msg_end - msg_start;
@@ -86,7 +88,10 @@ void *receive_thread(void *arg) {
         if (count <= 0) break;
         buf[count] = '\0';
 
-        if (strncmp(buf, "ERROR(01)", sizeof("ERROR(01)") - 1) == 0) {
+        if (strncmp(buf, "ID(", sizeof("ID(") - 1) == 0) {
+            // Função auxiliar para obter o ID
+            sscanf(buf, "ID(%d)", &server_id);
+        } else if (strncmp(buf, "ERROR(01)", sizeof("ERROR(01)") - 1) == 0) {
             printf("User limit exceeded\n");
             close(sock);
             exit(EXIT_SUCCESS);
@@ -117,7 +122,7 @@ void *receive_thread(void *arg) {
                 struct tm *timeinfo = localtime(&now);
                 strftime(time_str, sizeof(time_str), "[%H:%M]", timeinfo);
 
-                if (terminal_id == 1) {
+                if (server_id == id) {
                     printf("%s -> all: %s\n", time_str, join_msg);
                 } else {
                     printf("%s %02d: %s\n", time_str, id, join_msg);
@@ -130,10 +135,6 @@ void *receive_thread(void *arg) {
             memset(user_list, 0, BUFSZ);
             parse_user_list(buf + sizeof("RES_LIST(") - 1, user_list);
             printf("%s\n", user_list);
-        } else if (strncmp(buf, "REQ_REM(", sizeof("REQ_REM(") - 1) == 0) {
-            // O ID não está sendo enviado em REQ_REM(IdUseri)
-            int requested_id;
-            sscanf(buf, "REQ_REM(%d)", &requested_id);
         } else if (strncmp(buf, "OK(01)", sizeof("OK(01)") - 1) == 0) {
             printf("Removed Successfully\n");
             close(sock);
@@ -141,7 +142,6 @@ void *receive_thread(void *arg) {
         } else {
             printf("%s\n", buf);
         }
-        terminal_id = 0;
     }
 
     close(sock);
@@ -165,8 +165,7 @@ int main(int argc, char **argv) {
     pthread_create(&send_tid, NULL, send_thread, &sock);
     pthread_create(&receive_tid, NULL, receive_thread, &sock);
 
-    char inclusion_request[] = "REQ_ADD\n";
-    ssize_t count = send(sock, inclusion_request, strlen(inclusion_request), 0);
+    ssize_t count = send(sock, "REQ_ADD\n", strlen("REQ_ADD\n"), 0);
     if (count <= 0) {
         close(sock);
         exit(EXIT_FAILURE);

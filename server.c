@@ -73,36 +73,8 @@ void list_users(int client_socket, int client_id) {
 void *client_thread(void *data) {
     struct client_data *cdata = (struct client_data *)data;
     struct sockaddr *caddr = (struct sockaddr *)(&cdata->storage);
-
     char caddrstr[BUFSZ];
     addrtostr(caddr, caddrstr, BUFSZ);
-    if (connected_users < USER_LIMIT - 1) {
-        if (cdata->id >= 10) {
-            printf("User %i added\n", cdata->id);
-        } else {
-            printf("User 0%i added\n", cdata->id);
-        }
-    }
-    group[cdata->id] = cdata;
-
-    if (connected_users >= USER_LIMIT - 1) {
-        send(cdata->csock, "ERROR(01)", sizeof("ERROR(01)"), 0);
-        free(cdata);
-        close(cdata->csock);
-        id_list[cdata->id] = 0;
-        pthread_exit(EXIT_SUCCESS);
-    }
-
-    connected_users++;
-
-    char join_msg[BUFSZ];
-    memset(join_msg, 0, BUFSZ);
-    if (cdata->id >= 10) {
-        sprintf(join_msg, "User %i joined the group!", cdata->id);
-    } else {
-        sprintf(join_msg, "User 0%i joined the group!", cdata->id);
-    }
-    send_to_group(join_msg, cdata->id);
 
     char buf[BUFSZ];
     memset(buf, 0, BUFSZ);
@@ -131,7 +103,36 @@ void *client_thread(void *data) {
         
         buf[count] = '\0';
 
-        if (strcmp(buf, "list users\n") == 0) {
+        if (strncmp(buf, "REQ_ADD", sizeof("REQ_ADD") - 1) == 0) {
+            if (connected_users >= USER_LIMIT - 1) {
+                send(cdata->csock, "ERROR(01)", sizeof("ERROR(01)"), 0);
+                free(cdata);
+                close(cdata->csock);
+                id_list[cdata->id] = 0;
+                pthread_exit(EXIT_SUCCESS);
+            } else {
+                if (cdata->id >= 10) {
+                    printf("User %i added\n", cdata->id);
+                } else {
+                    printf("User 0%i added\n", cdata->id);
+                };
+                // Envia o ID para o user.c
+                char id_msg[BUFSZ];
+                snprintf(id_msg, BUFSZ, "ID(%i)", cdata->id);
+                send(cdata->csock, id_msg, strlen(id_msg), 0);
+                group[cdata->id] = cdata;
+                connected_users++;
+            }
+
+            char join_msg[BUFSZ];
+            memset(join_msg, 0, BUFSZ);
+            if (cdata->id >= 10) {
+                sprintf(join_msg, "User %i joined the group!", cdata->id);
+            } else {
+                sprintf(join_msg, "User 0%i joined the group!", cdata->id);
+            }
+            send_to_group(join_msg, cdata->id);
+        } else if (strcmp(buf, "list users\n") == 0) {
             list_users(cdata->csock, cdata->id);
         } else if (strncmp(buf, "REQ_REM(", sizeof("REQ_REM(") - 1) == 0) {
             int requested_id;
@@ -155,7 +156,7 @@ void *client_thread(void *data) {
             } else {
                 send(cdata->csock, "ERROR(02)", sizeof("ERROR(02)"), 0);
             }
-        } else if (strncmp(buf, "MSG(NULL, \"", sizeof("MSG(NULL, \"") - 1) == 0) {
+        } else if (strncmp(buf, "MSG(", sizeof("MSG(") - 1) == 0) {
             char *msg_start = strchr(buf, '\"') + 1;
             char *msg_end = strrchr(buf, '\"');
             size_t msg_len = msg_end - msg_start;
