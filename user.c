@@ -21,17 +21,21 @@ void usage(int argc, char **argv) {
 
 void send_public_msg(int sock, const char *msg) {
     char send_msg[BUFSZ];
+    memset(send_msg, 0, BUFSZ);
+
     if (server_id >= 10) {
-        snprintf(send_msg, BUFSZ, "MSG(%d, \"%s\")", server_id, msg);
+        snprintf(send_msg, BUFSZ, "MSG(%d, NULL, \"%s\")", server_id, msg);
+        send(sock, send_msg, strlen(send_msg), 0);
     } else {
-        snprintf(send_msg, BUFSZ, "MSG(0%d, \"%s\")", server_id, msg);
+        snprintf(send_msg, BUFSZ, "MSG(0%d, NULL, \"%s\")", server_id, msg);
+        send(sock, send_msg, strlen(send_msg), 0);
     }
-    send(sock, send_msg, strlen(send_msg), 0);
 }
 
 void *send_thread(void *arg) {
     int sock = *((int *)arg);
     char buf[BUFSZ];
+    memset(buf, 0, BUFSZ);
 
     while (1) {
         fgets(buf, BUFSZ, stdin);
@@ -41,6 +45,7 @@ void *send_thread(void *arg) {
         if (strcmp(buf, "close connection\n") == 0) {
             printf("Removed Successfully\n");
             char remove_req[BUFSZ];
+            memset(remove_req, 0, BUFSZ);
             send(sock, remove_req, strlen(remove_req), 0);
             close(sock);
             exit(EXIT_SUCCESS);
@@ -51,6 +56,7 @@ void *send_thread(void *arg) {
             char *msg_end = strrchr(buf, '\"');
             size_t msg_len = msg_end - msg_start;
             char send_msg[BUFSZ];
+            memset(send_msg, 0, BUFSZ);
             strncpy(send_msg, msg_start, msg_len);
             send_msg[msg_len] = '\0';
             send_public_msg(sock, send_msg);
@@ -81,17 +87,15 @@ void parse_user_list(const char *response, char *user_list) {
 
 void *receive_thread(void *arg) {
     int sock = *((int *)arg);
-    char buf[BUFSZ];
+    char buf[BUFSZ];    
+    memset(buf, 0, BUFSZ);
 
     while (1) {
         ssize_t count = recv(sock, buf, BUFSZ - 1, 0);
         if (count <= 0) break;
         buf[count] = '\0';
-
-        if (strncmp(buf, "ID(", sizeof("ID(") - 1) == 0) {
-            // Função auxiliar para obter o ID
-            sscanf(buf, "ID(%d)", &server_id);
-        } else if (strncmp(buf, "ERROR(01)", sizeof("ERROR(01)") - 1) == 0) {
+        
+        if (strncmp(buf, "ERROR(01)", sizeof("ERROR(01)") - 1) == 0) {
             printf("User limit exceeded\n");
             close(sock);
             exit(EXIT_SUCCESS);
@@ -100,10 +104,14 @@ void *receive_thread(void *arg) {
             close(sock);
             exit(EXIT_SUCCESS);
         } else if (strncmp(buf, "MSG(", sizeof("MSG(") - 1) == 0) {
+            if (server_id == -1) {
+                server_id = extract_id(buf);
+            }
             char *msg_start = strchr(buf + sizeof("MSG(") - 1, ',') + 8;
             char *msg_end = strrchr(msg_start, ')') - 1;
             size_t msg_len = msg_end - msg_start + 1;
             char join_msg[BUFSZ];
+            memset(join_msg, 0, BUFSZ);
             strncpy(join_msg, msg_start, msg_len);
             join_msg[msg_len] = '\0';
 
@@ -165,7 +173,8 @@ int main(int argc, char **argv) {
     pthread_create(&send_tid, NULL, send_thread, &sock);
     pthread_create(&receive_tid, NULL, receive_thread, &sock);
 
-    ssize_t count = send(sock, "REQ_ADD\n", strlen("REQ_ADD\n"), 0);
+    char inclusion_request[] = "REQ_ADD";
+    ssize_t count = send(sock, inclusion_request, strlen(inclusion_request), 0);
     if (count <= 0) {
         close(sock);
         exit(EXIT_FAILURE);

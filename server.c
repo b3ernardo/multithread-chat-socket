@@ -43,10 +43,12 @@ void send_to_group(const char *msg, int sender_id) {
     for (int i = 1; i < USER_LIMIT; i++) {
         if (id_list[i] == 1 && i != sender_id) {
             char response[BUFSZ];
+            memset(response, 0, BUFSZ);
             snprintf(response, BUFSZ, "MSG(%02d, NULL, %s)", sender_id, msg);
             send(group[i]->csock, response, strlen(response), 0);
         } else if (id_list[i] == 1 && i == sender_id) {
             char response[BUFSZ];
+            memset(response, 0, BUFSZ);
             snprintf(response, BUFSZ, "MSG(%02d, NULL, %s)", sender_id, msg);
             send(group[i]->csock, response, strlen(response), 0);
         }
@@ -66,7 +68,8 @@ void list_users(int client_socket, int client_id) {
     }
 
     char response[BUFSZ];
-    snprintf(response, BUFSZ + 10, "RES_LIST(%s)", user_list);
+    memset(response, 0, BUFSZ);
+    snprintf(response, BUFSZ + 20, "RES_LIST(%s)", user_list);
     send(client_socket, response, strlen(response), 0);
 }
 
@@ -74,6 +77,7 @@ void *client_thread(void *data) {
     struct client_data *cdata = (struct client_data *)data;
     struct sockaddr *caddr = (struct sockaddr *)(&cdata->storage);
     char caddrstr[BUFSZ];
+    memset(caddrstr, 0, BUFSZ);
     addrtostr(caddr, caddrstr, BUFSZ);
 
     char buf[BUFSZ];
@@ -84,6 +88,7 @@ void *client_thread(void *data) {
         if (count <= 0) {
             if (count == 0) {
                 char remove_msg[BUFSZ];
+                memset(remove_msg, 0, BUFSZ);
                 snprintf(remove_msg, BUFSZ, "User %02d left the group!", cdata->id);
                 send_to_group(remove_msg, cdata->id);
                 if (cdata->id >= 10) {
@@ -116,10 +121,6 @@ void *client_thread(void *data) {
                 } else {
                     printf("User 0%i added\n", cdata->id);
                 };
-                // Envia o ID para o user.c
-                char id_msg[BUFSZ];
-                snprintf(id_msg, BUFSZ, "ID(%i)", cdata->id);
-                send(cdata->csock, id_msg, strlen(id_msg), 0);
                 group[cdata->id] = cdata;
                 connected_users++;
             }
@@ -142,13 +143,12 @@ void *client_thread(void *data) {
                 for (int i = 1; i < USER_LIMIT; i++) {
                     if (id_list[i] == 1 && i != requested_id) {
                         char remove_req[BUFSZ];
+                        memset(remove_req, 0, BUFSZ);
                         snprintf(remove_req, BUFSZ, "REQ_REM(%02d)", requested_id);
                         send(group[i]->csock, remove_req, strlen(remove_req), 0);
                     }
                 }
-
                 send(cdata->csock, "OK(01)", strlen("OK(01)"), 0);
-
                 close(cdata->csock);
                 free(cdata);
                 id_list[requested_id] = 0;
@@ -161,6 +161,7 @@ void *client_thread(void *data) {
             char *msg_end = strrchr(buf, '\"');
             size_t msg_len = msg_end - msg_start;
             char recv_msg[BUFSZ];
+            memset(recv_msg, 0, BUFSZ);
             strncpy(recv_msg, msg_start, msg_len);
             recv_msg[msg_len] = '\0';
 
@@ -172,19 +173,15 @@ void *client_thread(void *data) {
             printf("%s %02d: %s\n", time_str, cdata->id, recv_msg);
 
             for (int i = 1; i < USER_LIMIT; i++) {
-                if (id_list[i] == 1 && i != cdata->id) {
+                if (id_list[i] == 1) {
                     char response[BUFSZ];
-                    snprintf(response, BUFSZ + 20, "MSG(%02d, NULL, \"%s\")", cdata->id, recv_msg);
-                    send(group[i]->csock, response, strlen(response), 0);
-                } else if (id_list[i] == 1 && i == cdata->id) {
-                    char response[BUFSZ];
+                    memset(response, 0, BUFSZ);
                     snprintf(response, BUFSZ + 20, "MSG(%02d, NULL, \"%s\")", cdata->id, recv_msg);
                     send(group[i]->csock, response, strlen(response), 0);
                 }
             }
         }
     }
-
     connected_users--;
     id_list[cdata->id] = 0;
 
@@ -211,6 +208,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < USER_LIMIT; i++) group[i] = NULL;
 
     char addrstr[BUFSZ];
+    memset(addrstr, 0, BUFSZ);
     addrtostr(addr, addrstr, BUFSZ);
     printf("Bound to %s, waiting connections\n", addrstr);
 
