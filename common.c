@@ -60,9 +60,7 @@ void addrtostr(const struct sockaddr *addr, char *str, size_t strsize) {
         logexit("unknown protocol family");
     };
 
-    if (str) {
-        snprintf(str, strsize, "IPv%d %s %hu", version, addrstr, port);
-    };
+    if (str) snprintf(str, strsize, "IPv%d %s %hu", version, addrstr, port);
 };
 
 int server_sockaddr_init(const char *proto, const char *portstr, struct sockaddr_storage *storage) {
@@ -87,14 +85,3 @@ int server_sockaddr_init(const char *proto, const char *portstr, struct sockaddr
         return -1;
     };
 };
-
-int extract_id (const char* input_string) {
-    const char* pattern = "MSG(%d, NULL";
-    int msg_id;
-
-    if (sscanf(input_string, pattern, &msg_id) == 1) {
-        return msg_id;
-    } else {
-        return -1;
-    }
-}

@@ -11,13 +11,7 @@
 #include <time.h>
 
 #define BUFSZ 1024
-#define USER_LIMIT 4
-
-void usage(int argc, char **argv) {
-    printf("Usage: %s <v4|v6> <server port>\n", argv[0]);
-    printf("Example: %s v4 51511\n", argv[0]);
-    exit(EXIT_FAILURE);
-};
+#define USER_LIMIT 16
 
 struct client_data {
     int id;
@@ -27,8 +21,17 @@ struct client_data {
 
 struct client_data *group[USER_LIMIT];
 int id_list[USER_LIMIT];
+
+// Variável global que armazena os usuários conectados
 int connected_users = 0;
 
+void usage(int argc, char **argv) {
+    printf("Usage: %s <v4|v6> <server port>\n", argv[0]);
+    printf("Example: %s v4 51511\n", argv[0]);
+    exit(EXIT_FAILURE);
+}
+
+// Gera ID dinamicamente
 int id_generator() {
     for (int i = 1; i < USER_LIMIT; i++) {
         if (id_list[i] == 0) {
@@ -39,6 +42,7 @@ int id_generator() {
     return 0;
 }
 
+// Manda a mensagem ao grupo de usuários conectados
 void send_to_group(const char *msg, int sender_id) {
     for (int i = 1; i < USER_LIMIT; i++) {
         if (id_list[i] == 1) {
@@ -49,6 +53,7 @@ void send_to_group(const char *msg, int sender_id) {
     }
 }
 
+// Monsta a lista de usuários
 void list_users(int client_socket, int client_id) {
     char user_list[BUFSZ];
     memset(user_list, 0, BUFSZ);
@@ -66,6 +71,7 @@ void list_users(int client_socket, int client_id) {
     send(client_socket, response, strlen(response), 0);
 }
 
+// Thread do usuário
 void *client_thread(void *data) {
     struct client_data *cdata = (struct client_data *)data;
     struct sockaddr *caddr = (struct sockaddr *)(&cdata->storage);
@@ -93,7 +99,7 @@ void *client_thread(void *data) {
         }
         
         buf[count] = '\0';
-
+        // Recebimento de requisições e resposta às requisições
         if (strncmp(buf, "REQ_ADD", sizeof("REQ_ADD") - 1) == 0) {
             if (connected_users >= USER_LIMIT - 1) {
                 send(cdata->csock, "ERROR(01)", sizeof("ERROR(01)"), 0);
@@ -168,7 +174,6 @@ void *client_thread(void *data) {
                 memset(response, 0, BUFSZ);
                 snprintf(response, BUFSZ + 20, "MSG(%02d, %02d, \"%s\")", cdata->id, receiver_id, recv_msg);
                 send(group[receiver_id]->csock, response, strlen(response), 0);
-
                 if (receiver_id != cdata->id) {
                     for (int i = 0; i < USER_LIMIT; i++) {
                         if (id_list[i] == 1 && group[i] != NULL && i == cdata->id) {
@@ -184,7 +189,6 @@ void *client_thread(void *data) {
     }
     connected_users--;
     id_list[cdata->id] = 0;
-
     pthread_exit(EXIT_SUCCESS);
 }
 
@@ -229,6 +233,5 @@ int main(int argc, char **argv) {
         pthread_t tid;
         pthread_create(&tid, NULL, client_thread, cdata);
     }
-
     exit(EXIT_SUCCESS);
 }

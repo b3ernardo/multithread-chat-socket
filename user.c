@@ -11,7 +11,8 @@
 
 #define BUFSZ 1024
 
-int server_id = -1;
+// Variável global que armazena o ID do usuário no user.c
+int aux_user_id = -1;
 
 void usage(int argc, char **argv) {
     printf("Usage: %s <server IP> <server port>\n", argv[0]);
@@ -19,21 +20,42 @@ void usage(int argc, char **argv) {
     exit(EXIT_FAILURE);
 }
 
-void send_public_msg(int sock, const char *msg) {
-    char send_msg[BUFSZ];
-    snprintf(send_msg, BUFSZ, "MSG(%02d, NULL, \"%s\")", server_id, msg);
-    send(sock, send_msg, strlen(send_msg), 0);
+// Formata a lista de usuários
+void parse_user_list(const char *response, char *user_list) {
+    int length = strlen(response);
+    if (response[length - 1] == '\n') length--;
+    int count = 0;
+    for (int i = 0; i < length; i++) {
+        if (response[i] >= '0' && response[i] <= '9') {
+            user_list[count++] = response[i];
+            user_list[count++] = response[i + 1];
+            user_list[count++] = ' ';
+            i++;
+        }
+    }
+    user_list[count - 1] = '\0';
 }
 
+// Extrai o ID do remetente mensagem, para que seja possível usar o ID do usuário no user.c
+int extract_id (const char* input_string) {
+    const char* pattern = "MSG(%d, NULL";
+    int msg_id;
+    if (sscanf(input_string, pattern, &msg_id) == 1) {
+        return msg_id;
+    } else {
+        return -1;
+    }
+}
+
+// Thread de envio
 void *send_thread(void *arg) {
     int sock = *((int *)arg);
     char buf[BUFSZ];
-
     while (1) {
         fgets(buf, BUFSZ, stdin);
         ssize_t count = send(sock, buf, strlen(buf), 0);
         if (count <= 0) break;
-
+        // Mensagens enviadas ao servidor
         if (strcmp(buf, "close connection\n") == 0) {
             printf("Removed Successfully\n");
             char remove_req[BUFSZ];
@@ -50,7 +72,9 @@ void *send_thread(void *arg) {
             memset(send_msg, 0, BUFSZ);
             strncpy(send_msg, msg_start, msg_len);
             send_msg[msg_len] = '\0';
-            send_public_msg(sock, send_msg);
+            char response[BUFSZ];
+            snprintf(response, BUFSZ + 20, "MSG(%02d, NULL, \"%s\")", aux_user_id, send_msg);
+            send(sock, response, strlen(response), 0);
         }
 
         if (strncmp(buf, "send to", sizeof("send to") - 1) == 0) {
@@ -60,33 +84,15 @@ void *send_thread(void *arg) {
             sscanf(buf, "send to %02d \"%[^\"]\"", &receiver_id, message);
             char msg_buf[BUFSZ];
             memset(msg_buf, 0, BUFSZ);
-            snprintf(msg_buf, BUFSZ + 20, "MSG(%02d, %02d, \"%s\")", server_id, receiver_id, message);
+            snprintf(msg_buf, BUFSZ + 20, "MSG(%02d, %02d, \"%s\")", aux_user_id, receiver_id, message);
             send(sock, msg_buf, strlen(msg_buf), 0);
         }
     }
-    
     close(sock);
-
     pthread_exit(NULL);
 }
 
-void parse_user_list(const char *response, char *user_list) {
-    int length = strlen(response);
-    if (response[length - 1] == '\n')
-        length--;
-
-    int count = 0;
-    for (int i = 0; i < length; i++) {
-        if (response[i] >= '0' && response[i] <= '9') {
-            user_list[count++] = response[i];
-            user_list[count++] = response[i + 1];
-            user_list[count++] = ' ';
-            i++;
-        }
-    }
-    user_list[count - 1] = '\0';
-}
-
+// Thread de recebimento
 void *receive_thread(void *arg) {
     int sock = *((int *)arg);
     char buf[BUFSZ];    
@@ -95,7 +101,7 @@ void *receive_thread(void *arg) {
         ssize_t count = recv(sock, buf, BUFSZ - 1, 0);
         if (count <= 0) break;
         buf[count] = '\0';
-        
+        // Mensagens recebidas do servidor
         if (strncmp(buf, "ERROR(01)", sizeof("ERROR(01)") - 1) == 0) {
             printf("User limit exceeded\n");
             close(sock);
@@ -105,12 +111,11 @@ void *receive_thread(void *arg) {
         } else if (strncmp(buf, "ERROR(03)", sizeof("ERROR(03)") - 1) == 0) {
             printf("Receiver not found\n");
         } else if (strncmp(buf, "MSG(", sizeof("MSG(") - 1) == 0) {
-            if (server_id == -1) {
-                server_id = extract_id(buf);
-            }
+            if (aux_user_id == -1) aux_user_id = extract_id(buf);
             char *msg_start = strchr(buf + sizeof("MSG(") - 1, ',') + 8;
             char *msg_end = strrchr(msg_start, ')') - 1;
             size_t msg_len = msg_end - msg_start + 1;
+
             char msg[BUFSZ];
             strncpy(msg, msg_start, msg_len);
             msg[msg_len] = '\0';
@@ -127,9 +132,10 @@ void *receive_thread(void *arg) {
                 time_t now = time(NULL);
                 struct tm *timeinfo = localtime(&now);
                 strftime(time_str, sizeof(time_str), "[%H:%M]", timeinfo);
-                if (id1 == server_id && id1 != id2) {
+
+                if (id1 == aux_user_id && id1 != id2) {
                     printf("P %s -> %02d: %s\n", time_str, id2, message);
-                } else if (id2 == server_id && id1 != id2) {
+                } else if (id2 == aux_user_id && id1 != id2) {
                     printf("P %s %02d: %s\n", time_str, id1, message);
                 } else if (id1 == id2) {
                     printf("P %s -> %02d: %s\n", time_str, id2, message);
@@ -138,7 +144,6 @@ void *receive_thread(void *arg) {
             } else if (join_msg[0] == '\"' && join_msg[msg_len - 1] == '\"') {
                 memmove(msg, msg + 1, msg_len - 2);
                 msg[msg_len - 2] = '\0';
-
                 char id_str[4];
                 size_t id_len = strchr(buf, ',') - (buf + sizeof("MSG(") - 1);
                 strncpy(id_str, buf + sizeof("MSG(") - 1, id_len);
@@ -150,7 +155,7 @@ void *receive_thread(void *arg) {
                 struct tm *timeinfo = localtime(&now);
                 strftime(time_str, sizeof(time_str), "[%H:%M]", timeinfo);
 
-                if (server_id == id) {
+                if (aux_user_id == id) {
                     printf("%s -> all: %s\n", time_str, msg);
                 } else {
                     printf("%s %02d: %s\n", time_str, id, msg);
@@ -170,9 +175,7 @@ void *receive_thread(void *arg) {
             printf("%s\n", buf);
         }
     }
-
     close(sock);
-
     pthread_exit(NULL);
 }
 
