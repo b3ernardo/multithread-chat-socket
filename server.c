@@ -41,14 +41,8 @@ int id_generator() {
 
 void send_to_group(const char *msg, int sender_id) {
     for (int i = 1; i < USER_LIMIT; i++) {
-        if (id_list[i] == 1 && i != sender_id) {
+        if (id_list[i] == 1) {
             char response[BUFSZ];
-            memset(response, 0, BUFSZ);
-            snprintf(response, BUFSZ, "MSG(%02d, NULL, %s)", sender_id, msg);
-            send(group[i]->csock, response, strlen(response), 0);
-        } else if (id_list[i] == 1 && i == sender_id) {
-            char response[BUFSZ];
-            memset(response, 0, BUFSZ);
             snprintf(response, BUFSZ, "MSG(%02d, NULL, %s)", sender_id, msg);
             send(group[i]->csock, response, strlen(response), 0);
         }
@@ -62,13 +56,12 @@ void list_users(int client_socket, int client_id) {
     for (int i = 1; i < USER_LIMIT; i++) {
         if (id_list[i] == 1 && i != client_id) {
             char user_id[4];
-            sprintf(user_id, "0%i ", i);
+            sprintf(user_id, "%02d ", i);
             strcat(user_list, user_id);
         }
     }
 
     char response[BUFSZ];
-    memset(response, 0, BUFSZ);
     snprintf(response, BUFSZ + 20, "RES_LIST(%s)", user_list);
     send(client_socket, response, strlen(response), 0);
 }
@@ -77,7 +70,6 @@ void *client_thread(void *data) {
     struct client_data *cdata = (struct client_data *)data;
     struct sockaddr *caddr = (struct sockaddr *)(&cdata->storage);
     char caddrstr[BUFSZ];
-    memset(caddrstr, 0, BUFSZ);
     addrtostr(caddr, caddrstr, BUFSZ);
 
     char buf[BUFSZ];
@@ -91,13 +83,7 @@ void *client_thread(void *data) {
                 memset(remove_msg, 0, BUFSZ);
                 snprintf(remove_msg, BUFSZ, "User %02d left the group!", cdata->id);
                 send_to_group(remove_msg, cdata->id);
-                if (cdata->id >= 10) {
-                    printf("User %i removed\n", cdata->id);
-                } else {
-                    printf("User 0%i removed\n", cdata->id);
-                }
-            } else {
-                printf("Error receiving data from user %i\n", cdata->id);
+                printf("User %02d removed\n", cdata->id);
             }
             connected_users--;
             id_list[cdata->id] = 0;
@@ -116,28 +102,20 @@ void *client_thread(void *data) {
                 id_list[cdata->id] = 0;
                 pthread_exit(EXIT_SUCCESS);
             } else {
-                if (cdata->id >= 10) {
-                    printf("User %i added\n", cdata->id);
-                } else {
-                    printf("User 0%i added\n", cdata->id);
-                };
+                printf("User %02d added\n", cdata->id);
                 group[cdata->id] = cdata;
                 connected_users++;
             }
 
             char join_msg[BUFSZ];
             memset(join_msg, 0, BUFSZ);
-            if (cdata->id >= 10) {
-                sprintf(join_msg, "User %i joined the group!", cdata->id);
-            } else {
-                sprintf(join_msg, "User 0%i joined the group!", cdata->id);
-            }
+            sprintf(join_msg, "User %02d joined the group!", cdata->id);
             send_to_group(join_msg, cdata->id);
         } else if (strcmp(buf, "list users\n") == 0) {
             list_users(cdata->csock, cdata->id);
         } else if (strncmp(buf, "REQ_REM(", sizeof("REQ_REM(") - 1) == 0) {
             int requested_id;
-            sscanf(buf, "REQ_REM(%d)", &requested_id);
+            sscanf(buf, "REQ_REM(%02d)", &requested_id);
 
             if (id_list[requested_id] == 1 && group[requested_id] != NULL) {
                 for (int i = 1; i < USER_LIMIT; i++) {
@@ -170,15 +148,37 @@ void *client_thread(void *data) {
             struct tm *timeinfo = localtime(&now);
             strftime(time_str, sizeof(time_str), "[%H:%M]", timeinfo);
 
-            printf("%s %02d: %s\n", time_str, cdata->id, recv_msg);
+            int receiver_id = -1;
+            if (msg_end != NULL) {
+                sscanf(buf, "MSG(%*d, %02d", &receiver_id);
+            }
 
-            for (int i = 1; i < USER_LIMIT; i++) {
-                if (id_list[i] == 1) {
-                    char response[BUFSZ];
-                    memset(response, 0, BUFSZ);
-                    snprintf(response, BUFSZ + 20, "MSG(%02d, NULL, \"%s\")", cdata->id, recv_msg);
-                    send(group[i]->csock, response, strlen(response), 0);
+            if (receiver_id == -1) {
+                printf("%s %02d: %s\n", time_str, cdata->id, recv_msg);
+                for (int i = 1; i < USER_LIMIT; i++) {
+                    if (id_list[i] == 1) {
+                        char response[BUFSZ];
+                        memset(response, 0, BUFSZ);
+                        snprintf(response, BUFSZ + 20, "MSG(%02d, NULL, \"%s\")", cdata->id, recv_msg);
+                        send(group[i]->csock, response, strlen(response), 0);
+                    }
                 }
+            } else if (id_list[receiver_id] == 1 && group[receiver_id] != NULL) {
+                char response[BUFSZ];
+                memset(response, 0, BUFSZ);
+                snprintf(response, BUFSZ + 20, "MSG(%02d, %02d, \"%s\")", cdata->id, receiver_id, recv_msg);
+                send(group[receiver_id]->csock, response, strlen(response), 0);
+
+                for (int i = 0; i < USER_LIMIT; i++) {
+                    if (id_list[i] == 1 && group[i] != NULL) {
+                        if (i == cdata->id) {
+                            send(cdata->csock, response, strlen(response), 0);
+                        }
+                    }
+                }
+            } else {
+                printf("User %02d not found\n", receiver_id);
+                send(cdata->csock, "ERROR(03)", sizeof("ERROR(03)"), 0);
             }
         }
     }
@@ -208,7 +208,6 @@ int main(int argc, char **argv) {
     for (int i = 0; i < USER_LIMIT; i++) group[i] = NULL;
 
     char addrstr[BUFSZ];
-    memset(addrstr, 0, BUFSZ);
     addrtostr(addr, addrstr, BUFSZ);
     printf("Bound to %s, waiting connections\n", addrstr);
 

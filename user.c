@@ -21,21 +21,13 @@ void usage(int argc, char **argv) {
 
 void send_public_msg(int sock, const char *msg) {
     char send_msg[BUFSZ];
-    memset(send_msg, 0, BUFSZ);
-
-    if (server_id >= 10) {
-        snprintf(send_msg, BUFSZ, "MSG(%d, NULL, \"%s\")", server_id, msg);
-        send(sock, send_msg, strlen(send_msg), 0);
-    } else {
-        snprintf(send_msg, BUFSZ, "MSG(0%d, NULL, \"%s\")", server_id, msg);
-        send(sock, send_msg, strlen(send_msg), 0);
-    }
+    snprintf(send_msg, BUFSZ, "MSG(%02d, NULL, \"%s\")", server_id, msg);
+    send(sock, send_msg, strlen(send_msg), 0);
 }
 
 void *send_thread(void *arg) {
     int sock = *((int *)arg);
     char buf[BUFSZ];
-    memset(buf, 0, BUFSZ);
 
     while (1) {
         fgets(buf, BUFSZ, stdin);
@@ -45,7 +37,6 @@ void *send_thread(void *arg) {
         if (strcmp(buf, "close connection\n") == 0) {
             printf("Removed Successfully\n");
             char remove_req[BUFSZ];
-            memset(remove_req, 0, BUFSZ);
             send(sock, remove_req, strlen(remove_req), 0);
             close(sock);
             exit(EXIT_SUCCESS);
@@ -60,6 +51,17 @@ void *send_thread(void *arg) {
             strncpy(send_msg, msg_start, msg_len);
             send_msg[msg_len] = '\0';
             send_public_msg(sock, send_msg);
+        }
+
+        if (strncmp(buf, "send to", sizeof("send to") - 1) == 0) {
+            int receiver_id;
+            char message[BUFSZ];
+            memset(message, 0, BUFSZ);
+            sscanf(buf, "send to %02d \"%[^\"]\"", &receiver_id, message);
+            char msg_buf[BUFSZ];
+            memset(msg_buf, 0, BUFSZ);
+            snprintf(msg_buf, BUFSZ + 20, "MSG(%02d, %02d, \"%s\")", server_id, receiver_id, message);
+            send(sock, msg_buf, strlen(msg_buf), 0);
         }
     }
     
@@ -88,7 +90,6 @@ void parse_user_list(const char *response, char *user_list) {
 void *receive_thread(void *arg) {
     int sock = *((int *)arg);
     char buf[BUFSZ];    
-    memset(buf, 0, BUFSZ);
 
     while (1) {
         ssize_t count = recv(sock, buf, BUFSZ - 1, 0);
@@ -101,8 +102,8 @@ void *receive_thread(void *arg) {
             exit(EXIT_SUCCESS);
         } else if (strncmp(buf, "ERROR(02)", sizeof("ERROR(02)") - 1) == 0) {
             printf("User not found\n");
-            close(sock);
-            exit(EXIT_SUCCESS);
+        } else if (strncmp(buf, "ERROR(03)", sizeof("ERROR(03)") - 1) == 0) {
+            printf("Receiver not found\n");
         } else if (strncmp(buf, "MSG(", sizeof("MSG(") - 1) == 0) {
             if (server_id == -1) {
                 server_id = extract_id(buf);
@@ -110,14 +111,30 @@ void *receive_thread(void *arg) {
             char *msg_start = strchr(buf + sizeof("MSG(") - 1, ',') + 8;
             char *msg_end = strrchr(msg_start, ')') - 1;
             size_t msg_len = msg_end - msg_start + 1;
+            char msg[BUFSZ];
+            strncpy(msg, msg_start, msg_len);
+            msg[msg_len] = '\0';
             char join_msg[BUFSZ];
             memset(join_msg, 0, BUFSZ);
             strncpy(join_msg, msg_start, msg_len);
             join_msg[msg_len] = '\0';
 
-            if (join_msg[0] == '\"' && join_msg[msg_len - 1] == '\"') {
-                memmove(join_msg, join_msg + 1, msg_len - 2);
-                join_msg[msg_len - 2] = '\0';
+            int id1, id2;
+            char message[BUFSZ];
+            if (strstr(buf, "NULL") == NULL && strstr(buf, "MSG(") != NULL) {
+                sscanf(buf, "MSG(%02d, %02d, \"%[^\"]\")", &id1, &id2, message);
+                char time_str[8];
+                time_t now = time(NULL);
+                struct tm *timeinfo = localtime(&now);
+                strftime(time_str, sizeof(time_str), "[%H:%M]", timeinfo);
+                if (id1 == server_id) {
+                    printf("P %s -> %02d: %s\n", time_str, id2, message);
+                } else if (id2 == server_id) {
+                    printf("P %s %02d: %s\n", time_str, id1, message);
+                }
+            } else if (join_msg[0] == '\"' && join_msg[msg_len - 1] == '\"') {
+                memmove(msg, msg + 1, msg_len - 2);
+                msg[msg_len - 2] = '\0';
 
                 char id_str[4];
                 size_t id_len = strchr(buf, ',') - (buf + sizeof("MSG(") - 1);
@@ -131,16 +148,15 @@ void *receive_thread(void *arg) {
                 strftime(time_str, sizeof(time_str), "[%H:%M]", timeinfo);
 
                 if (server_id == id) {
-                    printf("%s -> all: %s\n", time_str, join_msg);
+                    printf("%s -> all: %s\n", time_str, msg);
                 } else {
-                    printf("%s %02d: %s\n", time_str, id, join_msg);
+                    printf("%s %02d: %s\n", time_str, id, msg);
                 }
             } else {
-                printf("%s\n", join_msg);
+                printf("%s\n", msg);
             }
         } else if (strncmp(buf, "RES_LIST(", sizeof("RES_LIST(") - 1) == 0) {
             char user_list[BUFSZ];
-            memset(user_list, 0, BUFSZ);
             parse_user_list(buf + sizeof("RES_LIST(") - 1, user_list);
             printf("%s\n", user_list);
         } else if (strncmp(buf, "OK(01)", sizeof("OK(01)") - 1) == 0) {

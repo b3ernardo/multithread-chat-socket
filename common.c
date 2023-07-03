@@ -96,5 +96,5 @@ int extract_id (const char* input_string) {
         return msg_id;
     } else {
         return -1;
-    };
-};
+    }
+}
