@@ -62,31 +62,31 @@ void *send_thread(void *arg) {
             send(sock, remove_req, strlen(remove_req), 0);
             close(sock);
             exit(EXIT_SUCCESS);
-        } else if (strncmp(buf, "send all \"", sizeof("send all \"") - 1) == 0) {
+        }
+
+        if (strncmp(buf, "send all \"", sizeof("send all \"") - 1) == 0) {
             char *msg_start = strchr(buf, '\"') + 1;
             char *msg_end = strrchr(buf, '\"');
-            if ((msg_start != NULL && msg_end != NULL && msg_end > msg_start) || (msg_start != NULL && msg_start == msg_end)) {
-                size_t msg_len = msg_end - msg_start;
-                char send_msg[BUFSZ];
-                memset(send_msg, 0, BUFSZ);
-                strncpy(send_msg, msg_start, msg_len);
-                send_msg[msg_len] = '\0';
-                char response[BUFSZ];
-                snprintf(response, BUFSZ + 20, "MSG(%02d, NULL, \"%s\")", aux_user_id, send_msg);
-                send(sock, response, strlen(response), 0);
-            } else continue;
-        } else if (strncmp(buf, "send to", strlen("send to")) == 0) {
+            size_t msg_len = msg_end - msg_start;
+            char send_msg[BUFSZ];
+            memset(send_msg, 0, BUFSZ);
+            strncpy(send_msg, msg_start, msg_len);
+            send_msg[msg_len] = '\0';
+            char response[BUFSZ];
+            snprintf(response, BUFSZ + 20, "MSG(%02d, NULL, \"%s\")", aux_user_id, send_msg);
+            send(sock, response, strlen(response), 0);
+        }
+
+        if (strncmp(buf, "send to", sizeof("send to") - 1) == 0) {
             int receiver_id;
             char message[BUFSZ];
             memset(message, 0, BUFSZ);
-            int result = sscanf(buf, "send to %02d \"%s\"", &receiver_id, message);
-            if (result == 2 && message[strlen(message) - 1] == '"') {
-                char msg_buf[BUFSZ];
-                memset(msg_buf, 0, BUFSZ);
-                snprintf(msg_buf, BUFSZ + 20, "MSG(%02d, %02d, \"%s\")", aux_user_id, receiver_id, message);
-                send(sock, msg_buf, strlen(msg_buf), 0);
-            } else continue;
-        } else continue;
+            sscanf(buf, "send to %02d \"%[^\"]\"", &receiver_id, message);
+            char msg_buf[BUFSZ];
+            memset(msg_buf, 0, BUFSZ);
+            snprintf(msg_buf, BUFSZ + 20, "MSG(%02d, %02d, \"%s\")", aux_user_id, receiver_id, message);
+            send(sock, msg_buf, strlen(msg_buf), 0);
+        }
     }
     close(sock);
     pthread_exit(NULL);
