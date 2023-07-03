@@ -74,7 +74,7 @@ void *client_thread(void *data) {
 
     char buf[BUFSZ];
     memset(buf, 0, BUFSZ);
-
+    
     while (1) {
         ssize_t count = recv(cdata->csock, buf, BUFSZ - 1, 0);
         if (count <= 0) {
@@ -169,9 +169,9 @@ void *client_thread(void *data) {
                 snprintf(response, BUFSZ + 20, "MSG(%02d, %02d, \"%s\")", cdata->id, receiver_id, recv_msg);
                 send(group[receiver_id]->csock, response, strlen(response), 0);
 
-                for (int i = 0; i < USER_LIMIT; i++) {
-                    if (id_list[i] == 1 && group[i] != NULL) {
-                        if (i == cdata->id) {
+                if (receiver_id != cdata->id) {
+                    for (int i = 0; i < USER_LIMIT; i++) {
+                        if (id_list[i] == 1 && group[i] != NULL && i == cdata->id) {
                             send(cdata->csock, response, strlen(response), 0);
                         }
                     }

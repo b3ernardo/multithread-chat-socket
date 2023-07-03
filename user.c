@@ -127,9 +127,12 @@ void *receive_thread(void *arg) {
                 time_t now = time(NULL);
                 struct tm *timeinfo = localtime(&now);
                 strftime(time_str, sizeof(time_str), "[%H:%M]", timeinfo);
-                if (id1 == server_id) {
+                if (id1 == server_id && id1 != id2) {
                     printf("P %s -> %02d: %s\n", time_str, id2, message);
-                } else if (id2 == server_id) {
+                } else if (id2 == server_id && id1 != id2) {
+                    printf("P %s %02d: %s\n", time_str, id1, message);
+                } else if (id1 == id2) {
+                    printf("P %s -> %02d: %s\n", time_str, id2, message);
                     printf("P %s %02d: %s\n", time_str, id1, message);
                 }
             } else if (join_msg[0] == '\"' && join_msg[msg_len - 1] == '\"') {
